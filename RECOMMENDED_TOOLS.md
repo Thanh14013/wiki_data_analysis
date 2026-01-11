@@ -1,75 +1,75 @@
-# Recommended Big Data Tools & Deployment Stack
-*Focus: Free/Freemium & Auto-scaling Capable*
+# Các công cụ Big Data & Stack triển khai được đề xuất
+*Trọng tâm: Miễn phí/Freemium & Có khả năng tự động mở rộng (Auto-scaling)*
 
-This guide proposes a modernized stack for the Wiki Data Pipeline that leverages **Serverless** and **Cloud Native** technologies to achieve high scalability with minimal cost (often starting free).
-
----
-
-## 1. Core Big Data Stack Recommendations
-
-### A. Ingestion & Messaging (Replacing Kafka)
-
-| Tool | Type | Free Tier / Model | Why Example? |
-| :--- | :--- | :--- | :--- |
-| **Upstash Kafka** | Serverless Kafka | **Free**: 10k messages/day. | Truly serverless. No managing brokers/Zookeeper. Scales to zero. Ideal for this project's event-driven nature. |
-| **Confluent Cloud** | Managed Kafka | **Free**: $400/month credit (first 30 days) + Always Free Basic. | usage-based. The industry standard. Good for robust production, but "Basic" tier is very affordable/free for low volume. |
-| **Redpanda** | Kafka API compatible | **Community Edition**: Free (Self-hosted). | 10x faster than Kafka, single binary (no Zookeeper), easy to deploy on K8s/Docker. Perfect if staying self-hosted. |
-
-👉 **Recommendation**: **Upstash Kafka** for easiest setup and true "scale-to-zero" cost model.
-
-### B. Stream Processing (Replacing Spark Structure Streaming)
-
-| Tool | Type | Free Tier / Model | Why Example? |
-| :--- | :--- | :--- | :--- |
-| **Bytewax** | Python Stream Processing | **Open Source**: Free. | Built on Rust, Python API. Very lightweight compared to Spark. Can run on a small container (perfect for Cloud Run). |
-| **Quix Streams** | Python Stream Processing | **Free Community Plan**. | Library designed for Kafka. Very simple pythonic API. Built for high performance. |
-| **RisingWave** | Streaming Database | **Free Tier**: Cloud version available. | SQL-based streaming database. Replaces "Spark + Postgres". You write SQL to join streams and it maintains materialized views automatically. |
-
-👉 **Recommendation**: **Quix Streams** (if coding in Python) or **RisingWave** (if preferring SQL). Both remove the heavy JVM overhead of Spark.
-
-### C. Real-time Analytics Database (Replacing PostgreSQL)
-
-Postgres is great, but OLAP databases are better for "Big Data" analytics (aggregations, time-series).
-
-| Tool | Type | Free Tier / Model | Why Example? |
-| :--- | :--- | :--- | :--- |
-| **Tinybird** | Real-time Analytics | **Free**: 10GB processed/month. | Ingests from Kafka, exposes API endpoints via SQL. Handles the "Dashboard Backend" role entirely. **Auto-scales**. |
-| **ClickHouse Cloud** | OLAP DB | **Free Trial** / usage based. | The fastest open-source OLAP DB. Perfect for "Battlefield" charts and massive aggregations. |
-| **Neon** | Serverless Postgres | **Free**: 0.5 GB, scale-to-zero. | If sticking with Postgres, Neon is the best Serverless option. Separates storage/compute. Auto-scales compute up/down. |
-
-👉 **Recommendation**: **Tinybird**. It replaces the need for a separate backend API. You just push data to it, write SQL, and it gives you a high-speed JSON API for your Streamlit dashboard.
+Hướng dẫn này đề xuất một stack hiện đại hóa cho Wiki Data Pipeline tận dụng các công nghệ **Serverless** và **Cloud Native** để đạt được khả năng mở rộng cao với chi phí tối thiểu (thường bắt đầu miễn phí).
 
 ---
 
-## 2. Deployment Platforms (Auto-scaling & Free)
+## 1. Đề xuất Big Data Stack cốt lõi
 
-To achieve "Auto Scalability" without managing Kubernetes clusters manually, you should use **Serverless Containers** or **PaaS**.
+### A. Ingestion & Messaging (Thay thế Kafka)
 
-### Top Recommendation: Google Cloud Run (GCP)
-*   **Model**: Serverless Containers. You give it a Docker image, it runs it.
-*   **Scaling**: Automatically scales from **0 to N** instances based on CPU/Request load.
-*   **Free Tier**: 2 million requests/month, 360,000 GB-seconds, 180,000 vCPU-seconds **FREE per month**.
-*   **Why use it**:
-    *   Deploy `producer` as a Service (or Job).
-    *   Deploy `dashboard` as a Service.
-    *   It handles HTTPS, Load Balancing, and Logging automatically.
+| Công cụ | Loại | Free Tier / Mô hình | Tại sao là ví dụ? |
+| :--- | :--- | :--- | :--- |
+| **Upstash Kafka** | Serverless Kafka | **Free**: 10k tin nhắn/ngày. | Hoàn toàn serverless. Không cần quản lý brokers/Zookeeper. Scales to zero (Mở rộng về 0). Lý tưởng cho tính chất hướng sự kiện của dự án này. |
+| **Confluent Cloud** | Managed Kafka | **Free**: $400/tháng tín dụng (30 ngày đầu) + Always Free Basic. | Dựa trên mức sử dụng. Tiêu chuẩn công nghiệp. Tốt cho sản xuất mạnh mẽ, nhưng gói "Basic" rất phải chăng/miễn phí cho khối lượng thấp. |
+| **Redpanda** | Tương thích Kafka API | **Community Edition**: Miễn phí (Self-hosted). | Nhanh hơn 10 lần so với Kafka, binary đơn lẻ (không cần Zookeeper), dễ triển khai trên K8s/Docker. Hoàn hảo nếu duy trì tự host. |
 
-### Alternative: Railway.app
-*   **Model**: PaaS. Connect GitHub -> Auto Deploy.
-*   **Scaling**: Vertical scaling (increase RAM/CPU).
-*   **Free**: Trial only (shifted to $5 min/month for full features).
-*   **Why use it**: Extremely focused on Developer Experience. Good "Variables" management.
+👉 **Khuyến nghị**: **Upstash Kafka** để thiết lập dễ dàng nhất và mô hình chi phí thực sự "scale-to-zero".
 
-### Alternative: Render.com
-*   **Model**: PaaS.
-*   **Free**: Free Web Services (spin down after inactivity).
-*   **Scaling**: Paid plans support auto-scaling instances.
+### B. Stream Processing (Thay thế Spark Structure Streaming)
+
+| Công cụ | Loại | Free Tier / Mô hình | Tại sao là ví dụ? |
+| :--- | :--- | :--- | :--- |
+| **Bytewax** | Python Stream Processing | **Open Source**: Miễn phí. | Xây dựng trên Rust, API Python. Rất nhẹ so với Spark. Có thể chạy trên một container nhỏ (hoàn hảo cho Cloud Run). |
+| **Quix Streams** | Python Stream Processing | **Free Community Plan**. | Thư viện được thiết kế cho Kafka. API rất pythonic và đơn giản. Xây dựng cho hiệu suất cao. |
+| **RisingWave** | Streaming Database | **Free Tier**: Có phiên bản Cloud. | Cơ sở dữ liệu streaming dựa trên SQL. Thay thế "Spark + Postgres". Bạn viết SQL để join các luồng và nó duy trì các materialized views tự động. |
+
+👉 **Khuyến nghị**: **Quix Streams** (nếu code bằng Python) hoặc **RisingWave** (nếu thích SQL). Cả hai đều loại bỏ gánh nặng JVM nặng nề của Spark.
+
+### C. Cơ sở dữ liệu phân tích thời gian thực (Thay thế PostgreSQL)
+
+Postgres rất tuyệt, nhưng các cơ sở dữ liệu OLAP tốt hơn cho phân tích "Big Data" (tổng hợp, chuỗi thời gian).
+
+| Công cụ | Loại | Free Tier / Mô hình | Tại sao là ví dụ? |
+| :--- | :--- | :--- | :--- |
+| **Tinybird** | Real-time Analytics | **Free**: 10GB xử lý/tháng. | Nhập từ Kafka, hiển thị các điểm cuối API qua SQL. Đảm nhận hoàn toàn vai trò "Dashboard Backend". **Auto-scales**. |
+| **ClickHouse Cloud** | OLAP DB | **Free Trial** / dựa trên sử dụng. | OLAP DB mã nguồn mở nhanh nhất. Hoàn hảo cho các biểu đồ "Battlefield" và các tổng hợp lớn. |
+| **Neon** | Serverless Postgres | **Free**: 0.5 GB, scale-to-zero. | Nếu vẫn dùng Postgres, Neon là tùy chọn Serverless tốt nhất. Tách biệt lưu trữ/tính toán. Tự động mở rộng tính toán lên/xuống. |
+
+👉 **Khuyến nghị**: **Tinybird**. Nó thay thế nhu cầu về một API backend riêng biệt. Bạn chỉ cần đẩy dữ liệu vào nó, viết SQL, và nó cung cấp cho bạn một API JSON tốc độ cao cho Streamlit dashboard của bạn.
 
 ---
 
-## 3. Proposed "Modern Free V2" Architecture
+## 2. Nền tảng triển khai (Auto-scaling & Miễn phí)
 
-Combine these tools for a powerful, zero-maintenance, highly scalable stack:
+Để đạt được "Auto Scalability" mà không cần quản lý các cụm Kubernetes thủ công, bạn nên sử dụng **Serverless Containers** hoặc **PaaS**.
+
+### Khuyến nghị hàng đầu: Google Cloud Run (GCP)
+*   **Mô hình**: Serverless Containers. Bạn cung cấp Docker image, nó chạy nó.
+*   **Scaling**: Tự động mở rộng từ **0 đến N** instances dựa trên tải CPU/Request.
+*   **Free Tier**: 2 triệu requests/tháng, 360,000 GB-giây, 180,000 vCPU-giây **MIỄN PHÍ mỗi tháng**.
+*   **Tại sao sử dụng nó**:
+    *   Triển khai `producer` như một Service (hoặc Job).
+    *   Triển khai `dashboard` như một Service.
+    *   Nó xử lý HTTPS, Load Balancing, và Logging tự động.
+
+### Thay thế: Railway.app
+*   **Mô hình**: PaaS. Kết nối GitHub -> Tự động Deploy.
+*   **Scaling**: Mở rộng theo chiều dọc (tăng RAM/CPU).
+*   **Free**: Chỉ dùng thử (chuyển sang tối thiểu $5/tháng cho đầy đủ tính năng).
+*   **Tại sao sử dụng nó**: Cực kỳ tập trung vào Trải nghiệm nhà phát triển. Quản lý "Variables" tốt.
+
+### Thay thế: Render.com
+*   **Mô hình**: PaaS.
+*   **Free**: Web Services miễn phí (tắt sau khi không hoạt động).
+*   **Scaling**: Các gói trả phí hỗ trợ tự động mở rộng instances.
+
+---
+
+## 3. Kiến trúc "V2 hiện đại miễn phí" được đề xuất
+
+Kết hợp các công cụ này để có một stack mạnh mẽ, không cần bảo trì, khả năng mở rộng cao:
 
 ```mermaid
 graph LR
@@ -90,21 +90,21 @@ graph LR
     end
 ```
 
-### Why this stack?
-1.  **No Server Management**: No EC2, no Droplets, no K8s Nodes to patch.
-2.  **Auto-Scaling**: Cloud Run scales the compute. Upstash/Tinybird scale the data layer.
-3.  **Cost**:
-    *   **Cloud Run**: Likely $0/month for this workload.
-    *   **Upstash**: Free tier covers ~300k messages/month.
-    *   **Tinybird**: Free tier covers ~10GB data.
+### Tại sao là stack này?
+1.  **Không quản lý Server**: Không EC2, không Droplets, không K8s Nodes để vá lỗi.
+2.  **Auto-Scaling**: Cloud Run mở rộng tính toán. Upstash/Tinybird mở rộng lớp dữ liệu.
+3.  **Chi phí**:
+    *   **Cloud Run**: Có khả năng $0/tháng cho khối lượng công việc này.
+    *   **Upstash**: Free tier bao gồm ~300k tin nhắn/tháng.
+    *   **Tinybird**: Free tier bao gồm ~10GB dữ liệu.
 
-## 4. Migration Steps (How to execute)
-1.  **Sign up**: GCP Account, Upstash Account, Tinybird Account.
-2.  **Refactor Producer**: Update `producer.py` to point to Upstash URL.
-3.  **Refactor Storage**: Instead of Spark -> Postgres, ingest Kafka topic directly into Tinybird.
-4.  **Refactor Dashboard**: Update `app.py` to fetch data from Tinybird HTTP APIs (faster than SQL query to Postgres).
+## 4. Các bước di chuyển (Cách thực hiện)
+1.  **Đăng ký**: Tài khoản GCP, Tài khoản Upstash, Tài khoản Tinybird.
+2.  **Refactor Producer**: Cập nhật `producer.py` để trỏ đến URL Upstash.
+3.  **Refactor Storage**: Thay vì Spark -> Postgres, nhập Kafka topic trực tiếp vào Tinybird.
+4.  **Refactor Dashboard**: Cập nhật `app.py` để lấy dữ liệu từ API HTTP của Tinybird (nhanh hơn truy vấn SQL đến Postgres).
 5.  **Deploy**:
     *   `gcloud run deploy producer --source .`
     *   `gcloud run deploy dashboard --source .`
 
-This transition removes the complexity of Spark and Kubernetes, focusing purely on Business Logic and Data Value.
+Quá trình chuyển đổi này loại bỏ sự phức tạp của Spark và Kubernetes, tập trung hoàn toàn vào Business Logic và Data Value.

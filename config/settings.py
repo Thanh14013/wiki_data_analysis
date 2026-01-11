@@ -60,6 +60,18 @@ class WikiAPIConfig:
     timeout: int = 30
 
 @dataclass
+class S3Config:
+    """AWS S3 Configuration for Batch Layer"""
+    bucket_name: str = os.getenv("S3_BUCKET_NAME", "wiki-data-lake-dev")
+    region: str = os.getenv("AWS_REGION", "us-east-1")
+    # If using IAM Role on EC2, keys are not needed.
+    # explicit keys are only for local dev (MinIO or User keys)
+    access_key: Optional[str] = os.getenv("AWS_ACCESS_KEY_ID")
+    secret_key: Optional[str] = os.getenv("AWS_SECRET_ACCESS_KEY")
+    endpoint_url: Optional[str] = os.getenv("S3_ENDPOINT_URL") # For MinIO support
+
+
+@dataclass
 class SparkConfig:
     """Spark application settings"""
     app_name: str = "WikiDataPipeline"
@@ -97,7 +109,9 @@ class Settings:
     kafka: KafkaConfig = field(default_factory=KafkaConfig)
     postgres: PostgresConfig = field(default_factory=PostgresConfig)
     wiki_api: WikiAPIConfig = field(default_factory=WikiAPIConfig)
+    wiki_api: WikiAPIConfig = field(default_factory=WikiAPIConfig)
     spark: SparkConfig = field(default_factory=SparkConfig)
+    s3: S3Config = field(default_factory=S3Config)
     
     def validate(self):
         """Kiểm tra các biến quan trọng"""

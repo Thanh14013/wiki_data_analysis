@@ -1,0 +1,121 @@
+version: '3.8'
+
+services:
+  # -----------------------------------------------------
+  # 1. Message Queue (Redpanda - Kafka Compatible)
+  # -----------------------------------------------------
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v23.3.3
+    container_name: wiki-redpanda
+    command:
+      - redpanda start
+      - --smp 1  # Limit to 1 CPU core
+      - --memory 1G # Limit memory usage
+      - --reserve-memory 0M
+      - --overprovisioned
+      - --node-id 0
+      - --check=false
+      - --kafka-addr PLAINTEXT://0.0.0.0:29092,OUTSIDE://0.0.0.0:9092
+      - --advertise-kafka-addr PLAINTEXT://redpanda:29092,OUTSIDE://localhost:9092
+      - --pandaproxy-addr 0.0.0.0:8082
+      - --advertise-pandaproxy-addr localhost:8082
+    ports:
+      - "9092:9092"
+      - "8081:8081" # Schema Registry
+      - "8082:8082" # HTTP Proxy
+    volumes:
+      - redpanda_data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+  # -----------------------------------------------------
+  # 2. Ingestion Producer (Python)
+  # -----------------------------------------------------
+  producer:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: wiki-producer
+    command: python ingestion/producer.py
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=redpanda:29092
+      - KAFKA_TOPIC=wiki-raw-events
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    restart: always
+
+  # -----------------------------------------------------
+  # 3. Stream Processing (Quix Streams - Speed Layer)
+  # -----------------------------------------------------
+  processing:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    image: wiki-processing:latest
+    deploy:
+      replicas: 3 # Distributed Emulation (3 workers)
+    command: python processing/quix_job.py
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=redpanda:29092
+      - KAFKA_TOPIC=wiki-raw-events
+      - KAFKA_CONSUMER_GROUP=wiki-quix-group
+      # RDS Connection (Injected via .env on EC2)
+      - POSTGRES_HOST=${DB_HOST}
+      - POSTGRES_PORT=${DB_PORT}
+      - POSTGRES_DB=${DB_DB}
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    restart: always
+
+  # -----------------------------------------------------
+  # 4. Batch Ingestion (S3 Archival - Batch Layer)
+  # -----------------------------------------------------
+  batch-ingestion:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: wiki-batch-job
+    command: python ingestion/batch_job.py
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=redpanda:29092
+      - KAFKA_TOPIC=wiki-raw-events
+      - KAFKA_CONSUMER_GROUP=wiki-batch-archiver
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - AWS_REGION=${AWS_REGION}
+      # If using IAM Role, keys are blank. If local, provided.
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} 
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    restart: always
+
+  # -----------------------------------------------------
+  # 5. Dashboard (Streamlit)
+  # -----------------------------------------------------
+  dashboard:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: wiki-dashboard
+    command: streamlit run dashboard/app.py --server.port 8501 --server.address 0.0.0.0
+    ports:
+      - "8501:8501"
+    environment:
+      - POSTGRES_HOST=${DB_HOST}
+      - POSTGRES_PORT=${DB_PORT}
+      - POSTGRES_DB=${DB_DB}
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    restart: always
+
+volumes:
+  redpanda_data:

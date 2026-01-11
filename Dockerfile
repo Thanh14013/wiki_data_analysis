@@ -1,18 +1,16 @@
-# --- SỬA DÒNG NÀY ---
-# Đổi từ python:3.10-slim sang python:3.10-slim-bookworm để dùng Debian Stable (có Java 17)
+# Sử dụng Python 3.10 Slim
 FROM python:3.10-slim-bookworm
 
 # Thiết lập thư mục làm việc
 WORKDIR /app
 
-# Cài đặt các gói hệ thống cần thiết cho Java (Spark cần Java)
-# (Giữ nguyên đoạn này)
+# Cài đặt các gói hệ thống cơ bản
 RUN apt-get update && \
-    apt-get install -y openjdk-17-jre-headless procps curl && \
+    apt-get install -y procps curl && \
     rm -rf /var/lib/apt/lists/*
 
-# Thiết lập biến môi trường cho Java và Python
-ENV JAVA_HOME="/usr/lib/jvm/java-17-openjdk-amd64"
+# Thiết lập biến môi trường Python
+ENV PYTHONPATH="/app"
 ENV PYTHONPATH="/app"
 
 # Copy file thư viện và cài đặt
