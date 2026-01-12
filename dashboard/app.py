@@ -102,19 +102,21 @@ traffic_df = load_data(
 
 user_df = load_data(
     """
-    SELECT user_type, SUM(user_count) AS total_count
-    FROM realtime_user_distribution
-    WHERE window_start >= NOW() - make_interval(mins => %s)
-    GROUP BY user_type
+    SELECT 
+        CASE WHEN is_bot THEN 'Bot' ELSE 'Human' END as user_type, 
+        COUNT(*) AS total_count
+    FROM realtime_recent_changes
+    WHERE event_time >= NOW() - make_interval(mins => %s)
+    GROUP BY 1
     """,
     params=interval_param,
 )
 
 server_df = load_data(
     """
-    SELECT server_name, SUM(edit_count) AS total_edits, SUM(total_bytes) AS total_bytes
-    FROM realtime_server_activity
-    WHERE window_start >= NOW() - make_interval(mins => %s)
+    SELECT server_name, COUNT(*) AS total_edits, SUM(ABS(bytes_changed)) AS total_bytes
+    FROM realtime_recent_changes
+    WHERE event_time >= NOW() - make_interval(mins => %s)
     GROUP BY server_name
     ORDER BY total_edits DESC
     LIMIT %s
@@ -122,10 +124,11 @@ server_df = load_data(
     params=(lookback_minutes, top_n),
 )
 
+# Calculate velocity from traffic volume (assuming 10s window roughly, or just event count trend)
 velocity_df = load_data(
     """
-    SELECT window_start, events_per_second, event_count
-    FROM realtime_content_velocity
+    SELECT window_start, (event_count / 10.0) as events_per_second, event_count
+    FROM realtime_traffic_volume
     WHERE window_start >= NOW() - make_interval(mins => %s)
     ORDER BY window_start DESC
     LIMIT 500
@@ -135,9 +138,9 @@ velocity_df = load_data(
 
 leaderboard_df = load_data(
     """
-    SELECT title, server_name, SUM(edit_count) AS total_edits, SUM(total_bytes) AS total_bytes
-    FROM realtime_content_leaderboard
-    WHERE window_start >= NOW() - make_interval(mins => %s)
+    SELECT title, server_name, COUNT(*) AS total_edits, SUM(ABS(bytes_changed)) AS total_bytes
+    FROM realtime_recent_changes
+    WHERE event_time >= NOW() - make_interval(mins => %s)
     GROUP BY title, server_name
     ORDER BY total_edits DESC
     LIMIT %s
@@ -147,11 +150,11 @@ leaderboard_df = load_data(
 
 action_df = load_data(
     """
-    SELECT window_start, action_type, SUM(action_count) AS action_count
-    FROM realtime_action_breakdown
-    WHERE window_start >= NOW() - make_interval(mins => %s)
-    GROUP BY window_start, action_type
-    ORDER BY window_start DESC
+    SELECT date_trunc('minute', event_time) as window_start, type as action_type, COUNT(*) AS action_count
+    FROM realtime_recent_changes
+    WHERE event_time >= NOW() - make_interval(mins => %s)
+    GROUP BY 1, 2
+    ORDER BY 1 DESC
     LIMIT 500
     """,
     params=interval_param,
@@ -159,30 +162,43 @@ action_df = load_data(
 
 severity_df = load_data(
     """
-    SELECT edit_type, SUM(count) AS total_count
-    FROM realtime_edits_severity
-    WHERE window_start >= NOW() - make_interval(mins => %s)
-    GROUP BY edit_type
+    SELECT 
+        CASE 
+            WHEN ABS(bytes_changed) > 1000 THEN 'Major'
+            WHEN ABS(bytes_changed) > 100 THEN 'Moderate'
+            ELSE 'Minor' 
+        END as edit_type, 
+        COUNT(*) AS total_count
+    FROM realtime_recent_changes
+    WHERE event_time >= NOW() - make_interval(mins => %s)
+    GROUP BY 1
     """,
     params=interval_param,
 )
 
 volume_change_df = load_data(
     """
-    SELECT change_type, SUM(total_bytes) AS total_bytes, SUM(count) AS count
-    FROM realtime_content_volume_change
-    WHERE window_start >= NOW() - make_interval(mins => %s)
-    GROUP BY change_type
+    SELECT 
+        CASE WHEN length_diff >= 0 THEN 'Addition' ELSE 'Deletion' END as change_type, 
+        SUM(ABS(length_diff)) AS total_bytes, 
+        COUNT(*) AS count
+    FROM realtime_recent_changes
+    WHERE event_time >= NOW() - make_interval(mins => %s)
+    GROUP BY 1
     """,
     params=interval_param,
 )
 
+# Simplified Namespace (heuristic based on colon)
 namespace_df = load_data(
     """
-    SELECT namespace, SUM(count) AS total_count
-    FROM realtime_namespace_distribution
-    WHERE window_start >= NOW() - make_interval(mins => %s)
-    GROUP BY namespace
+    SELECT 
+        SPLIT_PART(title, ':', 1) as namespace, 
+        COUNT(*) AS total_count
+    FROM realtime_recent_changes
+    WHERE event_time >= NOW() - make_interval(mins => %s)
+    AND title LIKE '%%:%%'
+    GROUP BY 1
     ORDER BY total_count DESC
     LIMIT 20
     """,
@@ -191,10 +207,13 @@ namespace_df = load_data(
 
 language_df = load_data(
     """
-    SELECT language, SUM(count) AS total_count, SUM(total_bytes) AS total_bytes
-    FROM realtime_language_breakdown
-    WHERE window_start >= NOW() - make_interval(mins => %s)
-    GROUP BY language
+    SELECT 
+        SPLIT_PART(server_name, '.', 1) as language, 
+        COUNT(*) AS total_count, 
+        SUM(ABS(bytes_changed)) AS total_bytes
+    FROM realtime_recent_changes
+    WHERE event_time >= NOW() - make_interval(mins => %s)
+    GROUP BY 1
     ORDER BY total_count DESC
     LIMIT %s
     """,
@@ -203,9 +222,9 @@ language_df = load_data(
 
 user_stats_df = load_data(
     """
-    SELECT "user", SUM(edit_count) AS total_edits
-    FROM realtime_user_stats
-    WHERE window_start >= NOW() - make_interval(mins => %s)
+    SELECT "user", COUNT(*) AS total_edits
+    FROM realtime_recent_changes
+    WHERE event_time >= NOW() - make_interval(mins => %s)
     GROUP BY "user"
     """,
     params=interval_param,
