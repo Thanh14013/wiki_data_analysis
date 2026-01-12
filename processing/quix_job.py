@@ -45,7 +45,7 @@ def write_to_postgres(table_name, columns, data):
         
         # Prepare INSERT statement
         cols_str = ",".join(columns)
-        vals_template = %s # psycopg2 handles tuple conversion
+
         
         query = f"INSERT INTO {table_name} ({cols_str}) VALUES %s"
         
