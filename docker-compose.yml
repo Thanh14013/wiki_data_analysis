@@ -64,12 +64,12 @@ services:
       - KAFKA_BOOTSTRAP_SERVERS=redpanda:29092
       - KAFKA_TOPIC=wiki-raw-events
       - KAFKA_CONSUMER_GROUP=wiki-quix-group
-      # RDS Connection (Injected via .env on EC2)
-      - POSTGRES_HOST=${DB_HOST}
-      - POSTGRES_PORT=${DB_PORT}
-      - POSTGRES_DB=${DB_DB}
-      - POSTGRES_USER=${DB_USER}
-      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      # RDS Connection
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     depends_on:
       redpanda:
         condition: service_healthy
@@ -90,9 +90,7 @@ services:
       - KAFKA_CONSUMER_GROUP=wiki-batch-archiver
       - S3_BUCKET_NAME=${S3_BUCKET_NAME}
       - AWS_REGION=${AWS_REGION}
-      # If using IAM Role, keys are blank. If local, provided.
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} 
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      # Access Keys omitted; assuming IAM Instance Profile on EC2
     depends_on:
       redpanda:
         condition: service_healthy
@@ -110,11 +108,11 @@ services:
     ports:
       - "8501:8501"
     environment:
-      - POSTGRES_HOST=${DB_HOST}
-      - POSTGRES_PORT=${DB_PORT}
-      - POSTGRES_DB=${DB_DB}
-      - POSTGRES_USER=${DB_USER}
-      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     restart: always
 
 volumes:

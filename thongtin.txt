@@ -1,0 +1,14 @@
+RDS:
+    - master username: thanh123
+    - master password: Nguyenvuthanh123
+    - VPC security group: rds-public-access
+    - initial database name: wikidb
+    - endpoint: wiki-pipeline-db.cen6acgi49ye.us-east-1.rds.amazonaws.com
+    - port: 5432
+S3:
+    - Bucket name: wiki-data-lake-prod-1407
+EC2:
+    - name: Wiki-BigData-Server
+    - Key pair name: wiki-ssh-key, file .pem: wiki-ssh-key.pem
+    - IAM instance profile: admin_thanh123
+    - public ip address: 100.31.157.179
