@@ -67,7 +67,7 @@ def main():
         broker_address=settings.kafka.bootstrap_servers,
         consumer_group=settings.kafka.consumer_group,
         auto_offset_reset="latest",
-        security_protocol="PLAINTEXT" # For Internal Redpanda (No SSL)
+        # security_protocol="PLAINTEXT" # For Internal Redpanda (No SSL) - Removed to fix TypeError
     )
 
     # 2. Define Topic
