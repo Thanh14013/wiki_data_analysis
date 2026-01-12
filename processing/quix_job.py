@@ -1,7 +1,7 @@
 import os
 import json
 import logging
-from datetime import timedelta
+import datetime
 from collections import defaultdict
 import psycopg2
 from psycopg2.extras import execute_values
