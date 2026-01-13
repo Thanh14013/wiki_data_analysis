@@ -107,6 +107,7 @@ def main():
         
         traffic_data = [] # List of tuples
         recent_changes_data = [] # List of tuples
+        cleanup_counter = 0 # Initialize counter
         
         while True:
             msg = consumer.poll(1.0)
@@ -169,6 +170,35 @@ def main():
 
             except Exception as e:
                 logger.error(f"Processing Error: {e}")
+            
+            # --- 4. Auto-Cleanup (Prevent Disk Full) ---
+            # Run cleanup roughly every 100 polls (approx 1-2 mins) avoids hammering DB
+            cleanup_counter += 1
+            if cleanup_counter >= 100:
+                cleanup_old_data()
+                cleanup_counter = 0
+
+def cleanup_old_data(retention_hours=24):
+    """Delete real-time data older than retention period"""
+    logger.info(f"🧹 Running cleanup: Deleting real-time data older than {retention_hours}h...")
+    conn = get_db_connection()
+    if not conn:
+        return
+    
+    try:
+        cursor = conn.cursor()
+        # Clean both realtime tables
+        query = f"""
+            DELETE FROM realtime_recent_changes WHERE event_time < NOW() - INTERVAL '{retention_hours} HOURS';
+            DELETE FROM realtime_traffic_volume WHERE window_start < NOW() - INTERVAL '{retention_hours} HOURS';
+        """
+        cursor.execute(query)
+        conn.commit()
+        logger.info("✅ Cleanup completed successfully")
+    except Exception as e:
+        logger.error(f"❌ Cleanup Failed: {e}")
+    finally:
+        conn.close()
                 
 if __name__ == "__main__":
     try:
