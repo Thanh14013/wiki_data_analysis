@@ -90,6 +90,12 @@ services:
       - KAFKA_CONSUMER_GROUP=wiki-batch-archiver
       - S3_BUCKET_NAME=${S3_BUCKET_NAME}
       - AWS_REGION=${AWS_REGION}
+      # Database Connection for Spark Job
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       # Access Keys omitted; assuming IAM Instance Profile on EC2
     depends_on:
       redpanda:
