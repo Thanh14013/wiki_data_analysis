@@ -102,9 +102,18 @@ class WikiBatchProcessor:
             
             record_count = df.count()
             logger.info(f"✅ Loaded {record_count:,} records from Data Lake")
+            
+            if record_count == 0:
+                logger.warning("⚠️  No records found in Data Lake - batch-ingestion may not have written data yet")
+                return None
+            
             return df
             
         except Exception as e:
+            if "PATH_NOT_FOUND" in str(e) or "does not exist" in str(e):
+                logger.warning(f"⚠️  Data lake path not found yet: {data_path}")
+                logger.warning("   Waiting for batch-ingestion to write first batch...")
+                return None
             logger.error(f"❌ Error reading from Data Lake: {e}")
             raise
     
@@ -263,6 +272,12 @@ class WikiBatchProcessor:
             
             # Read data from Data Lake
             events_df = self._read_datalake(days_back)
+            
+            # If no data yet, skip this run
+            if events_df is None:
+                logger.info("⏭️  Skipping batch run - no data available yet")
+                logger.info("   Batch-ingestion needs to write first batch to S3")
+                return
             
             # Calculate all analytics
             analytics = {

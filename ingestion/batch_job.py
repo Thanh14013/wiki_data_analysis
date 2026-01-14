@@ -105,7 +105,7 @@ def main():
     )
 
     buffer = []
-    BATCH_SIZE = 5000 # Buffer 5000 events before write
+    BATCH_SIZE = 100  # Lower for faster testing (was 5000)
     TIMEOUT_SEC = 60  # Or write every 60 seconds
     last_flush_time = datetime.now()
 
