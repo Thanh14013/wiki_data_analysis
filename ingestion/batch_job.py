@@ -40,10 +40,23 @@ def get_s3_client():
     )
 
 
+def normalize_log_params(x):
+    """Normalize log_params to handle mixed types"""
+    if x is None:
+        return None
+    if isinstance(x, (dict, list)):
+        return json.dumps(x, ensure_ascii=False)
+    return str(x)
+
+
 def upload_batch(df: pd.DataFrame):
     """Upload DataFrame to data lake (S3 or local), aligned with batch processor."""
     if df.empty:
         return
+
+    # Normalize log_params before writing to avoid schema conflicts
+    if 'log_params' in df.columns:
+        df['log_params'] = df['log_params'].apply(normalize_log_params)
 
     if 'event_time' not in df.columns:
         if 'timestamp' in df.columns:
