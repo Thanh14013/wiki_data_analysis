@@ -31,13 +31,21 @@ def _parse_datalake_path(data_lake_path: str):
 
 def get_s3_client():
     """Create boto3 client for S3"""
-    return boto3.client(
-        's3',
-        region_name=settings.s3.region,
-        aws_access_key_id=settings.s3.access_key,
-        aws_secret_access_key=settings.s3.secret_key,
-        endpoint_url=settings.s3.endpoint_url
-    )
+    client_kwargs = {
+        'service_name': 's3',
+        'region_name': settings.s3.region,
+    }
+    
+    # Only add credentials if explicitly provided (not empty)
+    if settings.s3.access_key and settings.s3.secret_key:
+        client_kwargs['aws_access_key_id'] = settings.s3.access_key
+        client_kwargs['aws_secret_access_key'] = settings.s3.secret_key
+    
+    # Add endpoint URL if specified (for MinIO)
+    if settings.s3.endpoint_url:
+        client_kwargs['endpoint_url'] = settings.s3.endpoint_url
+    
+    return boto3.client(**client_kwargs)
 
 
 def normalize_log_params(x):
