@@ -102,6 +102,17 @@ class SparkConfig:
         ]
         return ",".join(pkgs)
 
+    def get_packages(self, spark_version: Optional[str] = None, scala_version: Optional[str] = None) -> str:
+        """Backward-compatible helper; mirrors `packages` property with overrides."""
+        spark_ver = spark_version or self.spark_version
+        scala_ver = scala_version or self.scala_version
+        pkgs = [
+            f"org.apache.spark:spark-sql-kafka-0-10_{scala_ver}:{spark_ver}",
+            "org.postgresql:postgresql:42.6.0",
+            "org.apache.commons:commons-pool2:2.10.0",
+        ]
+        return ",".join(pkgs)
+
 @dataclass
 class Settings:
     """Main settings container"""
