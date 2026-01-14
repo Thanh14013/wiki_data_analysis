@@ -73,9 +73,10 @@ def upload_batch(df: pd.DataFrame):
         # timestamp is already int64, convert to datetime ONLY for event_time
         df['event_time'] = pd.to_datetime(df['timestamp'], unit='s', utc=True)
     
-    # Ensure timestamp stays as int64 (don't let pandas convert it)
+    # DROP timestamp column - we only need event_time for Spark
+    # This avoids ALL timestamp type issues
     if 'timestamp' in df.columns:
-        df['timestamp'] = df['timestamp'].astype('int64')
+        df = df.drop(columns=['timestamp'])
 
     year = datetime.utcnow().strftime("%Y")
     month = datetime.utcnow().strftime("%m")
@@ -87,18 +88,14 @@ def upload_batch(df: pd.DataFrame):
         try:
             filename = f"{prefix}/wiki_events_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.parquet"
             
-            # Build PyArrow table DIRECTLY from dict to avoid pandas type inference
-            # This is the ONLY way to prevent TIMESTAMP(NANOS) metadata
+            # Build PyArrow table DIRECTLY - timestamp already dropped
             arrays = {}
             for col in df.columns:
-                if col == 'timestamp':
-                    # Force pure int64, no timestamp metadata
-                    arrays[col] = pa.array(df[col].astype('int64'), type=pa.int64())
-                elif col == 'event_time':
-                    # Keep as timestamp for Spark
+                if col == 'event_time':
+                    # Only timestamp column, use timestamp type for Spark
                     arrays[col] = pa.array(df[col], type=pa.timestamp('ms', tz='UTC'))
                 else:
-                    # Let PyArrow infer other columns
+                    # All other columns - let PyArrow infer
                     arrays[col] = pa.array(df[col])
             
             table = pa.table(arrays)
@@ -120,12 +117,10 @@ def upload_batch(df: pd.DataFrame):
             os.makedirs(target_dir, exist_ok=True)
             filename = os.path.join(target_dir, f"wiki_events_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.parquet")
             
-            # Same approach for local files
+            # Same approach for local
             arrays = {}
             for col in df.columns:
-                if col == 'timestamp':
-                    arrays[col] = pa.array(df[col].astype('int64'), type=pa.int64())
-                elif col == 'event_time':
+                if col == 'event_time':
                     arrays[col] = pa.array(df[col], type=pa.timestamp('ms', tz='UTC'))
                 else:
                     arrays[col] = pa.array(df[col])
