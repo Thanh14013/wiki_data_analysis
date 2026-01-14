@@ -87,19 +87,21 @@ def upload_batch(df: pd.DataFrame):
         try:
             filename = f"{prefix}/wiki_events_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.parquet"
             
-            # Use PyArrow with explicit schema to prevent TIMESTAMP(NANOS)
-            table = pa.Table.from_pandas(df, preserve_index=False)
+            # Build PyArrow table DIRECTLY from dict to avoid pandas type inference
+            # This is the ONLY way to prevent TIMESTAMP(NANOS) metadata
+            arrays = {}
+            for col in df.columns:
+                if col == 'timestamp':
+                    # Force pure int64, no timestamp metadata
+                    arrays[col] = pa.array(df[col].astype('int64'), type=pa.int64())
+                elif col == 'event_time':
+                    # Keep as timestamp for Spark
+                    arrays[col] = pa.array(df[col], type=pa.timestamp('ms', tz='UTC'))
+                else:
+                    # Let PyArrow infer other columns
+                    arrays[col] = pa.array(df[col])
             
-            # Force timestamp column to int64 if exists
-            if 'timestamp' in table.column_names:
-                schema_fields = []
-                for field in table.schema:
-                    if field.name == 'timestamp':
-                        schema_fields.append(pa.field('timestamp', pa.int64()))
-                    else:
-                        schema_fields.append(field)
-                new_schema = pa.schema(schema_fields)
-                table = table.cast(new_schema)
+            table = pa.table(arrays)
             
             buffer = io.BytesIO()
             pq.write_table(table, buffer, version='2.6', compression='snappy')
@@ -118,19 +120,23 @@ def upload_batch(df: pd.DataFrame):
             os.makedirs(target_dir, exist_ok=True)
             filename = os.path.join(target_dir, f"wiki_events_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.parquet")
             
-            # Same PyArrow approach for local
+            # Same approach for local files
+            arrays = {}
             for col in df.columns:
-                if pd.api.types.is_datetime64_any_dtype(df[col]):
-                    if col == 'event_time':
-                        df[col] = df[col].astype('datetime64[ms]')
-                    elif col == 'timestamp':
-                        df[col] = (df[col].astype('int64') // 10**9).astype('int64')
+                if col == 'timestamp':
+                    arrays[col] = pa.array(df[col].astype('int64'), type=pa.int64())
+                elif col == 'event_time':
+                    arrays[col] = pa.array(df[col], type=pa.timestamp('ms', tz='UTC'))
+                else:
+                    arrays[col] = pa.array(df[col])
             
-            table = pa.Table.from_pandas(df, preserve_index=False)
+            table = pa.table(arrays)
             pq.write_table(table, filename, version='2.6', compression='snappy')
             logger.info(f"✅ Wrote {len(df)} records to {filename}")
         except Exception as e:
             logger.error(f"❌ Local write failed: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
 
 def main():
     logger.info("🚀 Starting Batch Archiver...")
