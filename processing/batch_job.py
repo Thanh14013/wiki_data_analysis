@@ -97,6 +97,11 @@ class WikiBatchProcessor:
                 .option("mergeSchema", "true") \
                 .parquet(data_path)
             
+            # Convert event_time from int64 (epoch ms) to timestamp for Spark
+            if 'event_time' in df.columns:
+                from pyspark.sql.functions import from_unixtime
+                df = df.withColumn("event_time", (col("event_time") / 1000).cast("timestamp"))
+            
             # Filter by date if needed
             if days_back > 0:
                 cutoff_date = datetime.now() - timedelta(days=days_back)

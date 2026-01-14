@@ -88,15 +88,21 @@ def upload_batch(df: pd.DataFrame):
         try:
             filename = f"{prefix}/wiki_events_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.parquet"
             
-            # Build PyArrow table DIRECTLY - timestamp already dropped
+            # CRITICAL FIX: Convert datetime to int64 (epoch ms) BEFORE creating PyArrow arrays
+            # This prevents timestamp[ns] metadata
+            df_copy = df.copy()
+            if 'event_time' in df_copy.columns:
+                # Convert to epoch milliseconds (int64)
+                df_copy['event_time'] = (df_copy['event_time'].astype('int64') // 1_000_000).astype('int64')
+            
+            # Now build PyArrow arrays - event_time is pure int64
             arrays = {}
-            for col in df.columns:
+            for col in df_copy.columns:
                 if col == 'event_time':
-                    # Only timestamp column, use timestamp type for Spark
-                    arrays[col] = pa.array(df[col], type=pa.timestamp('ms', tz='UTC'))
+                    # Store as int64, Spark will read it correctly
+                    arrays[col] = pa.array(df_copy[col], type=pa.int64())
                 else:
-                    # All other columns - let PyArrow infer
-                    arrays[col] = pa.array(df[col])
+                    arrays[col] = pa.array(df_copy[col])
             
             table = pa.table(arrays)
             
@@ -117,13 +123,17 @@ def upload_batch(df: pd.DataFrame):
             os.makedirs(target_dir, exist_ok=True)
             filename = os.path.join(target_dir, f"wiki_events_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.parquet")
             
-            # Same approach for local
+            # Same fix for local
+            df_copy = df.copy()
+            if 'event_time' in df_copy.columns:
+                df_copy['event_time'] = (df_copy['event_time'].astype('int64') // 1_000_000).astype('int64')
+            
             arrays = {}
-            for col in df.columns:
+            for col in df_copy.columns:
                 if col == 'event_time':
-                    arrays[col] = pa.array(df[col], type=pa.timestamp('ms', tz='UTC'))
+                    arrays[col] = pa.array(df_copy[col], type=pa.int64())
                 else:
-                    arrays[col] = pa.array(df[col])
+                    arrays[col] = pa.array(df_copy[col])
             
             table = pa.table(arrays)
             pq.write_table(table, filename, version='2.6', compression='snappy')
