@@ -88,23 +88,18 @@ def upload_batch(df: pd.DataFrame):
         try:
             filename = f"{prefix}/wiki_events_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.parquet"
             
-            # CRITICAL FIX: Convert datetime to int64 (epoch ms) BEFORE creating PyArrow arrays
-            # This prevents timestamp[ns] metadata
-            df_copy = df.copy()
-            if 'event_time' in df_copy.columns:
-                # Convert to epoch milliseconds (int64)
-                df_copy['event_time'] = (df_copy['event_time'].astype('int64') // 1_000_000).astype('int64')
+            # ULTIMATE FIX: Convert DataFrame to dict, then build PyArrow from scratch
+            # This removes ALL pandas metadata completely
+            records = df.to_dict('records')
             
-            # Now build PyArrow arrays - event_time is pure int64
-            arrays = {}
-            for col in df_copy.columns:
-                if col == 'event_time':
-                    # Store as int64, Spark will read it correctly
-                    arrays[col] = pa.array(df_copy[col], type=pa.int64())
-                else:
-                    arrays[col] = pa.array(df_copy[col])
+            # Convert event_time to int64 in dict (epoch milliseconds)
+            for record in records:
+                if 'event_time' in record and hasattr(record['event_time'], 'timestamp'):
+                    # Pandas Timestamp → epoch ms
+                    record['event_time'] = int(record['event_time'].timestamp() * 1000)
             
-            table = pa.table(arrays)
+            # Build PyArrow table from pure Python dicts (NO pandas metadata)
+            table = pa.Table.from_pylist(records)
             
             buffer = io.BytesIO()
             pq.write_table(table, buffer, version='2.6', compression='snappy')
@@ -123,19 +118,13 @@ def upload_batch(df: pd.DataFrame):
             os.makedirs(target_dir, exist_ok=True)
             filename = os.path.join(target_dir, f"wiki_events_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.parquet")
             
-            # Same fix for local
-            df_copy = df.copy()
-            if 'event_time' in df_copy.columns:
-                df_copy['event_time'] = (df_copy['event_time'].astype('int64') // 1_000_000).astype('int64')
+            # Same approach
+            records = df.to_dict('records')
+            for record in records:
+                if 'event_time' in record and hasattr(record['event_time'], 'timestamp'):
+                    record['event_time'] = int(record['event_time'].timestamp() * 1000)
             
-            arrays = {}
-            for col in df_copy.columns:
-                if col == 'event_time':
-                    arrays[col] = pa.array(df_copy[col], type=pa.int64())
-                else:
-                    arrays[col] = pa.array(df_copy[col])
-            
-            table = pa.table(arrays)
+            table = pa.Table.from_pylist(records)
             pq.write_table(table, filename, version='2.6', compression='snappy')
             logger.info(f"✅ Wrote {len(df)} records to {filename}")
         except Exception as e:
