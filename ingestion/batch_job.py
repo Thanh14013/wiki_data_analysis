@@ -2,6 +2,8 @@ import os
 import json
 import logging
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 import boto3
 from datetime import datetime
 from urllib.parse import urlparse
@@ -93,8 +95,22 @@ def upload_batch(df: pd.DataFrame):
     if is_s3:
         try:
             filename = f"{prefix}/wiki_events_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.parquet"
+            
+            # Convert to PyArrow Table with explicit schema (Spark-compatible)
+            # Ensure timestamp is int64 (epoch seconds), not datetime64[ns]
+            for col in df.columns:
+                if pd.api.types.is_datetime64_any_dtype(df[col]):
+                    if col == 'event_time':
+                        # Keep as timestamp but convert to ms
+                        df[col] = df[col].astype('datetime64[ms]')
+                    elif col == 'timestamp':
+                        # Convert to int64 epoch
+                        df[col] = (df[col].astype('int64') // 10**9).astype('int64')
+            
+            # Write using PyArrow for explicit schema control
+            table = pa.Table.from_pandas(df, preserve_index=False)
             buffer = io.BytesIO()
-            df.to_parquet(buffer, index=False)
+            pq.write_table(table, buffer, version='2.6', compression='snappy')
             buffer.seek(0)
 
             s3 = get_s3_client()
@@ -107,7 +123,17 @@ def upload_batch(df: pd.DataFrame):
             target_dir = os.path.join(prefix)
             os.makedirs(target_dir, exist_ok=True)
             filename = os.path.join(target_dir, f"wiki_events_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.parquet")
-            df.to_parquet(filename, index=False)
+            
+            # Same PyArrow approach for local
+            for col in df.columns:
+                if pd.api.types.is_datetime64_any_dtype(df[col]):
+                    if col == 'event_time':
+                        df[col] = df[col].astype('datetime64[ms]')
+                    elif col == 'timestamp':
+                        df[col] = (df[col].astype('int64') // 10**9).astype('int64')
+            
+            table = pa.Table.from_pandas(df, preserve_index=False)
+            pq.write_table(table, filename, version='2.6', compression='snappy')
             logger.info(f"✅ Wrote {len(df)} records to {filename}")
         except Exception as e:
             logger.error(f"❌ Local write failed: {e}")
