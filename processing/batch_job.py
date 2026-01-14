@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.functions import (
     col, count, sum as spark_sum, avg, max as spark_max, min as spark_min,
-    hour, dayofweek, date_format, desc, row_number, percent_rank
+    hour, dayofweek, date_format, desc, row_number, percent_rank, date_trunc
 )
 from pyspark.sql.window import Window
 
@@ -93,25 +93,22 @@ class WikiBatchProcessor:
             raise
     
     def _calculate_hourly_patterns(self, df: DataFrame) -> DataFrame:
-        """
-        Analyze activity patterns by hour of day
-        Useful for understanding peak editing times
-        """
-        logger.info("📊 Calculating hourly activity patterns...")
-        
+        """Hourly aggregation (time series, not just 0-23 buckets)."""
+        logger.info("📊 Calculating hourly activity patterns (time series)...")
+
         hourly_stats = (
-            df.withColumn("hour_of_day", hour("event_time"))
-            .groupBy("hour_of_day")
+            df.withColumn("hour_bucket", date_trunc("hour", col("event_time")))
+            .groupBy("hour_bucket")
             .agg(
                 count("*").alias("total_events"),
                 spark_sum("bytes_changed").alias("total_bytes"),
                 avg("bytes_changed").alias("avg_bytes"),
                 count(col("is_bot") == True).alias("bot_events"),
-                count(col("is_bot") == False).alias("human_events")
+                count(col("is_bot") == False).alias("human_events"),
             )
-            .orderBy("hour_of_day")
+            .orderBy("hour_bucket")
         )
-        
+
         return hourly_stats
     
     def _calculate_top_contributors(self, df: DataFrame, top_n: int = 100) -> DataFrame:
@@ -152,37 +149,34 @@ class WikiBatchProcessor:
         
         return lang_stats
     
-    def _calculate_trend_analysis(self, df: DataFrame) -> DataFrame:
-        """
-        Calculate daily trends and growth metrics
-        """
-        logger.info("📈 Calculating trend analysis...")
-        
-        daily_trends = (
-            df.withColumn("date", date_format("event_time", "yyyy-MM-dd"))
-            .groupBy("date")
+    def _calculate_hourly_trends(self, df: DataFrame) -> DataFrame:
+        """Hourly trends with 24-hour moving average."""
+        logger.info("📈 Calculating hourly trends...")
+
+        hourly_trends = (
+            df.withColumn("hour_bucket", date_trunc("hour", col("event_time")))
+            .groupBy("hour_bucket")
             .agg(
                 count("*").alias("total_events"),
                 spark_sum("bytes_changed").alias("total_bytes"),
                 count(col("is_bot") == True).alias("bot_count"),
                 count(col("type") == "new").alias("new_pages"),
-                count(col("type") == "edit").alias("edits")
+                count(col("type") == "edit").alias("edits"),
             )
-            .orderBy("date")
+            .orderBy("hour_bucket")
         )
-        
-        # Add moving average (7-day window)
-        window_spec = Window.orderBy("date").rowsBetween(-6, 0)
-        
-        daily_with_ma = daily_trends.withColumn(
-            "events_7day_avg",
+
+        window_spec = Window.orderBy("hour_bucket").rowsBetween(-23, 0)
+
+        hourly_with_ma = hourly_trends.withColumn(
+            "events_24h_avg",
             avg("total_events").over(window_spec)
         ).withColumn(
-            "bytes_7day_avg",
+            "bytes_24h_avg",
             avg("total_bytes").over(window_spec)
         )
-        
-        return daily_with_ma
+
+        return hourly_with_ma
     
     def _calculate_server_rankings(self, df: DataFrame, top_n: int = 50) -> DataFrame:
         """
@@ -257,10 +251,10 @@ class WikiBatchProcessor:
             # Calculate all analytics
             analytics = {
                 "hourly_patterns": self._calculate_hourly_patterns(events_df),
+                "hourly_trends": self._calculate_hourly_trends(events_df),
                 "top_contributors": self._calculate_top_contributors(events_df),
                 "language_distribution": self._calculate_language_distribution(events_df),
-                "daily_trends": self._calculate_trend_analysis(events_df),
-                "server_rankings": self._calculate_server_rankings(events_df)
+                "server_rankings": self._calculate_server_rankings(events_df),
             }
             
             # Write results to Postgres
@@ -293,8 +287,8 @@ def main():
     parser.add_argument(
         "--days",
         type=int,
-        default=7,
-        help="Number of days of historical data to process (default: 7)"
+        default=1,
+        help="Number of days of historical data to process (default: 1)"
     )
     
     args = parser.parse_args()
