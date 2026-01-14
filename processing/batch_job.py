@@ -46,19 +46,35 @@ class WikiBatchProcessor:
         """Create Spark session for batch processing"""
         spark_version = "3.5.1"
         scala_version = "2.12"
+        hadoop_version = "3.3.4"
         
+        # Add hadoop-aws for S3 support
         packages = self.settings.spark.get_packages(spark_version, scala_version)
+        packages += f",org.apache.hadoop:hadoop-aws:{hadoop_version}"
+        packages += f",com.amazonaws:aws-java-sdk-bundle:1.12.262"
+        
         os.environ['PYSPARK_SUBMIT_ARGS'] = f'--packages {packages} pyspark-shell'
         
-        spark = (
+        builder = (
             SparkSession.builder
             .appName(self.settings.spark.app_name + "-Batch")
             .master(self.settings.spark.master)
             .config("spark.sql.adaptive.enabled", "true")
             .config("spark.sql.adaptive.coalescePartitions.enabled", "true")
             .config("spark.sql.shuffle.partitions", "200")
-            .getOrCreate()
         )
+        
+        # Configure S3 access
+        builder = builder.config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
+        builder = builder.config("spark.hadoop.fs.s3a.aws.credentials.provider", 
+                                "com.amazonaws.auth.InstanceProfileCredentialsProvider,com.amazonaws.auth.DefaultAWSCredentialsProviderChain")
+        
+        # If explicit credentials provided
+        if self.settings.s3.access_key:
+            builder = builder.config("spark.hadoop.fs.s3a.access.key", self.settings.s3.access_key)
+            builder = builder.config("spark.hadoop.fs.s3a.secret.key", self.settings.s3.secret_key)
+        
+        spark = builder.getOrCreate()
         
         spark.sparkContext.setLogLevel(self.settings.spark.log_level)
         logger.info("✅ Spark Session created for batch processing")
