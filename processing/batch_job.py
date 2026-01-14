@@ -93,7 +93,9 @@ class WikiBatchProcessor:
         logger.info(f"   Time range: Last {days_back} days")
         
         try:
-            df = self.spark.read.parquet(data_path)
+            df = self.spark.read \
+                .option("mergeSchema", "true") \
+                .parquet(data_path)
             
             # Filter by date if needed
             if days_back > 0:

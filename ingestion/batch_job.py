@@ -66,11 +66,23 @@ def upload_batch(df: pd.DataFrame):
     if 'log_params' in df.columns:
         df['log_params'] = df['log_params'].apply(normalize_log_params)
 
+    # Ensure event_time and normalize timestamp types for Spark compatibility
     if 'event_time' not in df.columns:
         if 'timestamp' in df.columns:
-            df['event_time'] = pd.to_datetime(df['timestamp'], unit='s')
+            # Convert epoch to datetime
+            df['event_time'] = pd.to_datetime(df['timestamp'], unit='s', utc=True)
         else:
-            df['event_time'] = datetime.utcnow()
+            df['event_time'] = pd.Timestamp.utcnow()
+    
+    # Convert timestamp to int64 (epoch milliseconds) for Spark compatibility
+    if 'timestamp' in df.columns:
+        # Ensure it's int64, not datetime
+        if not pd.api.types.is_integer_dtype(df['timestamp']):
+            df['timestamp'] = pd.to_datetime(df['timestamp']).astype('int64') // 10**9
+    
+    # Ensure event_time is datetime64[ms] not [ns] for Spark
+    if 'event_time' in df.columns and pd.api.types.is_datetime64_any_dtype(df['event_time']):
+        df['event_time'] = df['event_time'].dt.floor('ms')
 
     year = datetime.utcnow().strftime("%Y")
     month = datetime.utcnow().strftime("%m")
@@ -113,7 +125,7 @@ def main():
     )
 
     buffer = []
-    BATCH_SIZE = 100  # Lower for faster testing (was 5000)
+    BATCH_SIZE = 5000  # Buffer 5000 events before write
     TIMEOUT_SEC = 60  # Or write every 60 seconds
     last_flush_time = datetime.now()
 
