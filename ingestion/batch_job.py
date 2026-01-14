@@ -68,23 +68,14 @@ def upload_batch(df: pd.DataFrame):
     if 'log_params' in df.columns:
         df['log_params'] = df['log_params'].apply(normalize_log_params)
 
-    # Ensure event_time and normalize timestamp types for Spark compatibility
-    if 'event_time' not in df.columns:
-        if 'timestamp' in df.columns:
-            # Convert epoch to datetime
-            df['event_time'] = pd.to_datetime(df['timestamp'], unit='s', utc=True)
-        else:
-            df['event_time'] = pd.Timestamp.utcnow()
+    # Create event_time from timestamp (already int64)
+    if 'event_time' not in df.columns and 'timestamp' in df.columns:
+        # timestamp is already int64, convert to datetime ONLY for event_time
+        df['event_time'] = pd.to_datetime(df['timestamp'], unit='s', utc=True)
     
-    # Convert timestamp to int64 (epoch milliseconds) for Spark compatibility
+    # Ensure timestamp stays as int64 (don't let pandas convert it)
     if 'timestamp' in df.columns:
-        # Ensure it's int64, not datetime
-        if not pd.api.types.is_integer_dtype(df['timestamp']):
-            df['timestamp'] = pd.to_datetime(df['timestamp']).astype('int64') // 10**9
-    
-    # Ensure event_time is datetime64[ms] not [ns] for Spark
-    if 'event_time' in df.columns and pd.api.types.is_datetime64_any_dtype(df['event_time']):
-        df['event_time'] = df['event_time'].dt.floor('ms')
+        df['timestamp'] = df['timestamp'].astype('int64')
 
     year = datetime.utcnow().strftime("%Y")
     month = datetime.utcnow().strftime("%m")
@@ -96,19 +87,20 @@ def upload_batch(df: pd.DataFrame):
         try:
             filename = f"{prefix}/wiki_events_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.parquet"
             
-            # Convert to PyArrow Table with explicit schema (Spark-compatible)
-            # Ensure timestamp is int64 (epoch seconds), not datetime64[ns]
-            for col in df.columns:
-                if pd.api.types.is_datetime64_any_dtype(df[col]):
-                    if col == 'event_time':
-                        # Keep as timestamp but convert to ms
-                        df[col] = df[col].astype('datetime64[ms]')
-                    elif col == 'timestamp':
-                        # Convert to int64 epoch
-                        df[col] = (df[col].astype('int64') // 10**9).astype('int64')
-            
-            # Write using PyArrow for explicit schema control
+            # Use PyArrow with explicit schema to prevent TIMESTAMP(NANOS)
             table = pa.Table.from_pandas(df, preserve_index=False)
+            
+            # Force timestamp column to int64 if exists
+            if 'timestamp' in table.column_names:
+                schema_fields = []
+                for field in table.schema:
+                    if field.name == 'timestamp':
+                        schema_fields.append(pa.field('timestamp', pa.int64()))
+                    else:
+                        schema_fields.append(field)
+                new_schema = pa.schema(schema_fields)
+                table = table.cast(new_schema)
+            
             buffer = io.BytesIO()
             pq.write_table(table, buffer, version='2.6', compression='snappy')
             buffer.seek(0)
@@ -118,6 +110,8 @@ def upload_batch(df: pd.DataFrame):
             logger.info(f"✅ Uploaded {len(df)} records to s3://{bucket}/{filename}")
         except Exception as e:
             logger.error(f"❌ S3 Upload Failed: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
     else:
         try:
             target_dir = os.path.join(prefix)
@@ -158,7 +152,18 @@ def main():
     logger.info("📥 Waiting for events...")
     
     for message in consumer:
-        buffer.append(message.value)
+        event = message.value
+        
+        # CRITICAL: Convert timestamp to int BEFORE appending to buffer
+        # This prevents pandas from inferring datetime64[ns] type
+        if 'timestamp' in event and not isinstance(event['timestamp'], int):
+            # If it's already int, keep it; otherwise convert
+            try:
+                event['timestamp'] = int(event['timestamp'])
+            except:
+                event['timestamp'] = int(datetime.utcnow().timestamp())
+        
+        buffer.append(event)
         
         # Check buffer limits
         time_diff = (datetime.now() - last_flush_time).total_seconds()
