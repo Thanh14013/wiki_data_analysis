@@ -90,6 +90,9 @@ services:
       - KAFKA_CONSUMER_GROUP=wiki-batch-archiver
       - S3_BUCKET_NAME=${S3_BUCKET_NAME}
       - AWS_REGION=${AWS_REGION}
+      - DATA_LAKE_PATH=${DATA_LAKE_PATH}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       # Database Connection for Spark Job
       - POSTGRES_HOST=${POSTGRES_HOST}
       - POSTGRES_PORT=${POSTGRES_PORT}
@@ -103,7 +106,32 @@ services:
     restart: always
 
   # -----------------------------------------------------
-  # 5. Dashboard (Streamlit)
+  # 5. Batch Processor (Spark Batch Layer)
+  # -----------------------------------------------------
+  batch-processor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: wiki-batch-processor
+    command: >
+      bash -c "while true; do python processing/batch_job.py --days ${BATCH_DAYS:-2}; sleep ${BATCH_INTERVAL_SECONDS:-3600}; done"
+    environment:
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - DATA_LAKE_PATH=${DATA_LAKE_PATH}
+      - AWS_REGION=${AWS_REGION}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+    depends_on:
+      batch-ingestion:
+        condition: service_started
+    restart: always
+
+  # -----------------------------------------------------
+  # 6. Dashboard (Streamlit)
   # -----------------------------------------------------
   dashboard:
     build: 

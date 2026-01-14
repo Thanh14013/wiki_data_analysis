@@ -6,7 +6,7 @@ WORKDIR /app
 
 # Cài đặt các gói hệ thống cơ bản
 RUN apt-get update && \
-    apt-get install -y procps curl && \
+    apt-get install -y procps curl openjdk-11-jre-headless && \
     rm -rf /var/lib/apt/lists/*
 
 # Thiết lập biến môi trường Python

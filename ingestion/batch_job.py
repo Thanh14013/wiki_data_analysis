@@ -4,6 +4,7 @@ import logging
 import pandas as pd
 import boto3
 from datetime import datetime
+from urllib.parse import urlparse
 from kafka import KafkaConsumer
 import io
 
@@ -14,9 +15,19 @@ from config import get_settings
 
 # Logging
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("BatchS3Archiver")
+logger = logging.getLogger("BatchArchiver")
 
 settings = get_settings()
+
+
+def _parse_datalake_path(data_lake_path: str):
+    """Parse data lake path into (bucket, prefix, is_s3)."""
+    if data_lake_path.startswith("s3://") or data_lake_path.startswith("s3a://"):
+        parsed = urlparse(data_lake_path)
+        bucket = parsed.netloc
+        prefix = parsed.path.lstrip('/')
+        return bucket, prefix, True
+    return None, data_lake_path, False
 
 def get_s3_client():
     """Create boto3 client for S3"""
@@ -28,32 +39,49 @@ def get_s3_client():
         endpoint_url=settings.s3.endpoint_url
     )
 
-def upload_to_s3(df: pd.DataFrame, bucket: str, prefix: str):
-    """Upload DataFrame as Parquet to S3"""
+
+def upload_batch(df: pd.DataFrame):
+    """Upload DataFrame to data lake (S3 or local), aligned with batch processor."""
     if df.empty:
         return
-    
-    try:
-        # Generate filename with timestamp
-        filename = f"{prefix}/wiki_events_{datetime.now().strftime('%Y%m%d_%H%M%S')}.parquet"
-        
-        # Convert to Parquet buffer
-        buffer = io.BytesIO()
-        df.to_parquet(buffer, index=False)
-        buffer.seek(0)
-        
-        # Upload
-        s3 = get_s3_client()
-        s3.upload_fileobj(buffer, bucket, filename)
-        
-        logger.info(f"✅ Uploaded {len(df)} records to s3://{bucket}/{filename}")
-        
-    except Exception as e:
-        logger.error(f"❌ S3 Upload Failed: {e}")
+
+    if 'event_time' not in df.columns:
+        if 'timestamp' in df.columns:
+            df['event_time'] = pd.to_datetime(df['timestamp'], unit='s')
+        else:
+            df['event_time'] = datetime.utcnow()
+
+    year = datetime.utcnow().strftime("%Y")
+    month = datetime.utcnow().strftime("%m")
+
+    bucket, base_prefix, is_s3 = _parse_datalake_path(settings.spark.data_lake_path)
+    prefix = f"{base_prefix.rstrip('/')}/raw_events/year={year}/month={month}"
+
+    if is_s3:
+        try:
+            filename = f"{prefix}/wiki_events_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.parquet"
+            buffer = io.BytesIO()
+            df.to_parquet(buffer, index=False)
+            buffer.seek(0)
+
+            s3 = get_s3_client()
+            s3.upload_fileobj(buffer, bucket, filename)
+            logger.info(f"✅ Uploaded {len(df)} records to s3://{bucket}/{filename}")
+        except Exception as e:
+            logger.error(f"❌ S3 Upload Failed: {e}")
+    else:
+        try:
+            target_dir = os.path.join(prefix)
+            os.makedirs(target_dir, exist_ok=True)
+            filename = os.path.join(target_dir, f"wiki_events_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.parquet")
+            df.to_parquet(filename, index=False)
+            logger.info(f"✅ Wrote {len(df)} records to {filename}")
+        except Exception as e:
+            logger.error(f"❌ Local write failed: {e}")
 
 def main():
-    logger.info("🚀 Starting Batch S3 Archiver...")
-    logger.info(f"   Bucket: {settings.s3.bucket_name}")
+    logger.info("🚀 Starting Batch Archiver...")
+    logger.info(f"   Data lake: {settings.spark.data_lake_path}")
     
     consumer = KafkaConsumer(
         settings.kafka.topic_name,
@@ -79,13 +107,10 @@ def main():
         if len(buffer) >= BATCH_SIZE or (time_diff > TIMEOUT_SEC and len(buffer) > 0):
             logger.info(f"📦 Buffering threshold reached ({len(buffer)} events). Flushing to S3...")
             
-            # Create DataFrame
             df = pd.DataFrame(buffer)
-            
-            # Upload
-            upload_to_s3(df, settings.s3.bucket_name, "raw_data/year=2026/month=01")
-            
-            # Reset
+
+            upload_batch(df)
+
             buffer = []
             last_flush_time = datetime.now()
 
