@@ -87,7 +87,8 @@ class WikiBatchProcessor:
         Args:
             days_back: Number of days of historical data to process
         """
-        data_path = f"{self.settings.spark.data_lake_path}/raw_events"
+        # Use wildcard pattern to read partitioned data (year=*/month=*)
+        data_path = f"{self.settings.spark.data_lake_path}/raw_events/*/*"
         
         logger.info(f"📂 Reading data from: {data_path}")
         logger.info(f"   Time range: Last {days_back} days")
@@ -95,6 +96,7 @@ class WikiBatchProcessor:
         try:
             df = self.spark.read \
                 .option("mergeSchema", "true") \
+                .option("basePath", f"{self.settings.spark.data_lake_path}/raw_events") \
                 .parquet(data_path)
             
             # Convert timestamp from int64 (epoch seconds) to timestamp for Spark
