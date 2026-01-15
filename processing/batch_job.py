@@ -97,15 +97,15 @@ class WikiBatchProcessor:
                 .option("mergeSchema", "true") \
                 .parquet(data_path)
             
-            # Convert event_time from int64 (epoch ms) to timestamp for Spark
-            if 'event_time' in df.columns:
+            # Convert timestamp from int64 (epoch seconds) to timestamp for Spark
+            if 'timestamp' in df.columns:
                 from pyspark.sql.functions import from_unixtime
-                df = df.withColumn("event_time", (col("event_time") / 1000).cast("timestamp"))
+                df = df.withColumn("timestamp", col("timestamp").cast("timestamp"))
             
             # Filter by date if needed
             if days_back > 0:
                 cutoff_date = datetime.now() - timedelta(days=days_back)
-                df = df.filter(col("event_time") >= cutoff_date)
+                df = df.filter(col("timestamp") >= cutoff_date)
             
             record_count = df.count()
             logger.info(f"✅ Loaded {record_count:,} records from Data Lake")
@@ -129,7 +129,7 @@ class WikiBatchProcessor:
         logger.info("📊 Calculating hourly activity patterns (time series)...")
 
         hourly_stats = (
-            df.withColumn("hour_bucket", date_trunc("hour", col("event_time")))
+            df.withColumn("hour_bucket", date_trunc("hour", col("timestamp")))
             .groupBy("hour_bucket")
             .agg(
                 count("*").alias("total_events"),
@@ -186,7 +186,7 @@ class WikiBatchProcessor:
         logger.info("📈 Calculating hourly trends...")
 
         hourly_trends = (
-            df.withColumn("hour_bucket", date_trunc("hour", col("event_time")))
+            df.withColumn("hour_bucket", date_trunc("hour", col("timestamp")))
             .groupBy("hour_bucket")
             .agg(
                 count("*").alias("total_events"),

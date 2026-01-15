@@ -68,15 +68,8 @@ def upload_batch(df: pd.DataFrame):
     if 'log_params' in df.columns:
         df['log_params'] = df['log_params'].apply(normalize_log_params)
 
-    # Create event_time from timestamp (already int64)
-    if 'event_time' not in df.columns and 'timestamp' in df.columns:
-        # timestamp is already int64, convert to datetime ONLY for event_time
-        df['event_time'] = pd.to_datetime(df['timestamp'], unit='s', utc=True)
-    
-    # DROP timestamp column - we only need event_time for Spark
-    # This avoids ALL timestamp type issues
-    if 'timestamp' in df.columns:
-        df = df.drop(columns=['timestamp'])
+    # Keep timestamp as int64 - no conversions needed
+    # This ensures clean type compatibility with Spark
 
     year = datetime.utcnow().strftime("%Y")
     month = datetime.utcnow().strftime("%m")
@@ -88,18 +81,8 @@ def upload_batch(df: pd.DataFrame):
         try:
             filename = f"{prefix}/wiki_events_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.parquet"
             
-            # ULTIMATE FIX: Convert DataFrame to dict, then build PyArrow from scratch
-            # This removes ALL pandas metadata completely
-            records = df.to_dict('records')
-            
-            # Convert event_time to int64 in dict (epoch milliseconds)
-            for record in records:
-                if 'event_time' in record and hasattr(record['event_time'], 'timestamp'):
-                    # Pandas Timestamp → epoch ms
-                    record['event_time'] = int(record['event_time'].timestamp() * 1000)
-            
-            # Build PyArrow table from pure Python dicts (NO pandas metadata)
-            table = pa.Table.from_pylist(records)
+            # Write DataFrame directly - timestamp is already int64
+            table = pa.Table.from_pandas(df)
             
             buffer = io.BytesIO()
             pq.write_table(table, buffer, version='2.6', compression='snappy')
@@ -118,13 +101,8 @@ def upload_batch(df: pd.DataFrame):
             os.makedirs(target_dir, exist_ok=True)
             filename = os.path.join(target_dir, f"wiki_events_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.parquet")
             
-            # Same approach
-            records = df.to_dict('records')
-            for record in records:
-                if 'event_time' in record and hasattr(record['event_time'], 'timestamp'):
-                    record['event_time'] = int(record['event_time'].timestamp() * 1000)
-            
-            table = pa.Table.from_pylist(records)
+            # Write DataFrame directly - timestamp is already int64
+            table = pa.Table.from_pandas(df)
             pq.write_table(table, filename, version='2.6', compression='snappy')
             logger.info(f"✅ Wrote {len(df)} records to {filename}")
         except Exception as e:
