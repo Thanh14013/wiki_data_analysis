@@ -14,7 +14,8 @@ from datetime import datetime, timedelta
 from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.functions import (
     col, count, sum as spark_sum, avg, max as spark_max, min as spark_min,
-    hour, dayofweek, date_format, desc, row_number, percent_rank, date_trunc
+    hour, dayofweek, date_format, desc, row_number, percent_rank, date_trunc,
+    countDistinct
 )
 from pyspark.sql.window import Window
 
@@ -223,7 +224,7 @@ class WikiBatchProcessor:
             .agg(
                 count("*").alias("edit_count"),
                 spark_sum("bytes_changed").alias("total_bytes"),
-                count("user").distinct().alias("unique_users")
+                countDistinct("user").alias("unique_users")
             )
         )
         
