@@ -1,6 +1,6 @@
 # Environment variables
 .env
-
+thongtin.txt
 # Python
 __pycache__/
 *.pyc
